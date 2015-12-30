@@ -78,7 +78,8 @@ function test_configuration
 {
 	if [ "${config[retention]}" -le 0 ]
 	then
-		log "WARNING" "the retention is to small to do incremental backup"
+		log "WARNING" "the retention is to small, back to the minimal value"
+		config[retention]=1
 	fi
 
 	if [ "${config[retention]}" -gt 16 ]
@@ -343,8 +344,8 @@ then
 	btrfs subvolume delete "${config[snap]}/${config[name]}" 2>&1 > /dev/null
 	mv "${config[snap]}/${config[name]}-new" "${config[snap]}/${config[name]}" 2>&1 > /dev/null
 
-	log "INFO" "Removing old backup folder and replace it by the new one"
-	btrfs subvolume delete "${config[backup]}/${config[name]}" 2>&1 > /dev/null
+	log "INFO" "Rename backup folder from ${config[backup]}/${config[name]}-new to ${config[backup]}/${config[name]}"
+	#btrfs subvolume delete "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 	mv "${config[backup]}/${config[name]}-new" "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 else
 	#
@@ -383,5 +384,16 @@ then
 	rsync "${config[backup]}/backup_${config[name]}_${DATE}".* ${config[rsync]} 2>&1 > /dev/null
 	if [ $? -ne 0 ]; then log "ERROR" "Error during rsync of file ${config[backup]}/backup_${config[name]}_${DATE}.* to ${config[rsync]}" ; exit 30; fi
 fi
+
+#
+# Apply retention
+log "INFO" "Keep only the last ${config[retention]} backup(s)"
+(ls ${config[backup]}/backup_${config[name]}_${DATE}.* -t | head -n ${config[retention]}; ls ${config[backup]}/backup_${config[name]}_${DATE}.*) | sort | uniq -u | xargs --no-run-if-empty rm
+
+#
+# Do some cleaning
+log "INFO" "Cleaning files"
+rmdir $TMP_MOUNT
+btrfs subvolume delete "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 
 log "INFO" "Backup is finished successfully"
