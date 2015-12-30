@@ -280,7 +280,6 @@ test_configuration
 # Initial configuration, write a hidden file with configuration in it.
 if [ ${config[init]} -gt 0 ]
 then
-echo $BCK_PATH
 	log "INFO" "Writing variables in ${BCK_PATH}/.${BCK_CONF}"
 	echo "retention=${config[retention]}" > ${BCK_PATH}/.${BCK_CONF}
 	echo "rsync=${config[rsync]}" >> ${BCK_PATH}/.${BCK_CONF}
