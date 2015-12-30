@@ -15,7 +15,7 @@ function usage
 	echo -e "-i, --init\tInitialize the procedure for a path to snap/backup/rsync/..."
 	echo -e "-b, --rsync\tAn optional path to rsync the backup (copy the TAR file)"
 	echo -e "-z, --compress\tCompressor to choose for the TAR (backup) file (gzip/bzip2)"
-	echo -e "-s, --snap\tIn which <snap_path> to create the snap"
+	echo -e "-s, --snap\tIn which <snap_path> to create the snap, must be in the <path> to backup"
 	echo -e "-d, --backup\tWhere to do the backup (TAR of the snap, compress or not)"
 	echo -e "-n, --nomount\tTell to not use the mount --bind option (default is to use it, to avoid multi-mount point backup)"
 	echo -e "-N, --name\tGive a name to the backup, used to create the subdirectory hierarchy for snap/backup"
@@ -27,9 +27,9 @@ function usage
 # Function to log message
 function log
 {
-	local level=${config[loglovel]}
+	local level=${config[loglevel]}
 
-	if [ ${loglevl[$level]} -gt ${loglevel[$1]}]
+	if [ ${loglevel[$1]} -ge ${loglevel[$level]} ]
 	then
 		local level=$1
 		shift
@@ -50,6 +50,7 @@ function load_configuration
 {
 	if [ "$CONF_FILE" != "" ]
 	then
+		log "INFO" "Loading configuration file : $CONF_FILE"
 		while read line
 		do
 			if echo $line | grep -F = &>/dev/null
@@ -59,6 +60,16 @@ function load_configuration
 			fi
 		done < $CONF_FILE
 	fi
+}
+
+#
+# Debug function, dump the config var
+function dump
+{
+	for i in ${!config[@]}
+	do
+		echo "$i => ${config[$i]}"
+	done
 }
 
 #
@@ -105,16 +116,16 @@ function test_configuration
 		exit 1
 	fi
 
-	if [ ! -f "${BCK_PATH}/${BCK_CONF}" ]
+	if [[ ${config[init]} -le 0 ]] && [[ ! -f "${BCK_PATH}/.${BCK_CONF}" ]]
 	then
 		log "ERROR" "PATH has not been 'init', please see the help"
 		exit 1
 	fi
 
-	if [ -n "${config[name]}" ]
+	if [ -z "${config[name]}" ]
 	then
-		log "WARNING" "No name has been give, create random one"
 		config[name]=`tr -cd '[:alnum:]' < /dev/urandom | fold -w12 | head -n 1`
+		log "WARNING" "No name has been give, create random one: ${config[name]}"
 	fi
 }
 
@@ -214,9 +225,11 @@ do
 			;;
 		-N|--name)
 			TMP_NAME="$2"
+			shift
 			;;
 		-l|--loglevel)
 			config[loglevel]="$2"
+			shift
 			;;
 		(--)
 			break;;
@@ -244,7 +257,7 @@ BCK_CONF=`basename $0 .sh`
 
 #
 # Load the configuration
-load_configurationa
+load_configuration
 
 #
 # Apply parameters given in command line
@@ -260,6 +273,25 @@ load_configurationa
 #
 # Test the configuration for errors
 test_configuration
+
+#--------------------------------------------------------
+# Init a local configuration file ?
+
+# Initial configuration, write a hidden file with configuration in it.
+if [ ${config[init]} -gt 0 ]
+then
+echo $BCK_PATH
+	log "INFO" "Writing variables in ${BCK_PATH}/.${BCK_CONF}"
+	echo "retention=${config[retention]}" > ${BCK_PATH}/.${BCK_CONF}
+	echo "rsync=${config[rsync]}" >> ${BCK_PATH}/.${BCK_CONF}
+	echo "compress=${config[compress]}" >> ${BCK_PATH}/.${BCK_CONF}
+	echo "backup=${config[backup]}" >> ${BCK_PATH}/.${BCK_CONF}
+	echo "snap=${config[snap]}" >> ${BCK_PATH}/.${BCK_CONF}
+	echo "nomout=${config[nomount]}" >> ${BCK_PATH}/.${BCK_CONF}
+	echo "name=${config[name]}" >> ${BCK_PATH}/.${BCK_CONF}
+
+	exit 0
+fi
 
 #--------------------------------------------------------
 # Mount bind if necessary
@@ -281,23 +313,6 @@ else
 fi
 
 #--------------------------------------------------------
-# Init a local configuration file ?
-
-# Initial configuration, write a hidden file with configuration in it.
-if [ ${config[init]} -gt 0 ]
-then
-echo $BCK_PATH
-	log "INFO" "Writing variables in ${BCK_PATH}/.${BCK_CONF}"
-	echo "retention=${config[retention]}" > ${BCK_PATH}/.${BCK_CONF}
-	echo "rsync=${config[rsync]}" >> ${BCK_PATH}/.${BCK_CONF}
-	echo "backup=${config[backup]}" >> ${BCK_PATH}/.${BCK_CONF}
-	echo "snap=${config[snap]}" >> ${BCK_PATH}/.${BCK_CONF}
-	echo "nomount=${config[nomount]}" >> ${BCK_PATH}/.${BCK_CONF}
-
-	exit 0
-fi
-
-#--------------------------------------------------------
 # Trap signal to unconfigure temporary stuff
 
 trap '
@@ -315,21 +330,23 @@ then
 
 	# SNAP
 	log "INFO" "Snapshot of the volume ${FS_TO_BACKUP} on ${config[snap]}/${config[name]}"
-	btrfs subvolume snapshot -r ${FS_TO_BACKUP} "${config[snap]}/${config[name]}-new"
+	btrfs subvolume snapshot -r ${FS_TO_BACKUP} "${config[snap]}/${config[name]}-new" 2>&1 > /dev/null
+	if [ $? -ne 0 ]; then log "ERROR" "Error during the snapshot of ${FS_TO_BACKUP} on ${config[snap]}/${config[name]}" ; exit 10; fi
 	sync
 
 	# BACKUP
 	log "INFO" "Backup of ${config[snap]}/${config[name]} on ${config[backup]}"
-	btrfs send "${config[snap]}/${config[name]}-new" | btrfs receive "${config[backup]}"
+	btrfs send "${config[snap]}/${config[name]}-new" | btrfs receive "${config[backup]}" 2>&1 > /dev/null
+	if [ $? -ne 0 ]; then log "ERROR" "Error during the backup of ${config[snap]}/${config[name]} on ${config[backup]}" ; exit 11; fi
 
 	# Managing snap/backup
 	log "INFO" "Removing old snapshot and replace it by the new one"
-	btrfs subvolume delete "${config[snap]}/${config[name]}"
-	mv "${config[snap]}/${config[name]}-new" "${config[snap]}/${config[name]}"
+	btrfs subvolume delete "${config[snap]}/${config[name]}" 2>&1 > /dev/null
+	mv "${config[snap]}/${config[name]}-new" "${config[snap]}/${config[name]}" 2>&1 > /dev/null
 
 	log "INFO" "Removing old backup folder and replace it by the new one"
-	btrfs subvolume delete "${config[backup]}/${config[name]}"
-	mv "${config[backup]}/${config[name]}-new" "${config[backup]}/${config[name]}"
+	btrfs subvolume delete "${config[backup]}/${config[name]}" 2>&1 > /dev/null
+	mv "${config[backup]}/${config[name]}-new" "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 else
 	#
 	#first snap/backup
@@ -337,26 +354,26 @@ else
 
 	# SNAP
 	log "INFO" "Snapshot of the volume ${FS_TO_BACKUP} on ${config[snap]}/${config[name]}"
-	btrfs subvolume snapshot -r ${FS_TO_BACKUP} "${config[snap]}/${config[name]}"
-	if [ $? -ne 0 ]; then log "ERROR" "Error during the snapshot of ${FS_TO_BACKUP} on ${config[snap]}/${config[name]}" ; exit 21; fi
+	btrfs subvolume snapshot -r ${FS_TO_BACKUP} "${config[snap]}/${config[name]}" 2>&1 > /dev/null
+	if [ $? -ne 0 ]; then log "ERROR" "Error during the snapshot of ${FS_TO_BACKUP} on ${config[snap]}/${config[name]}" ; exit 10; fi
 	sync
 
 	# BACKUP
 	log "INFO" "Backup of ${config[snap]}/${config[name]} on ${config[backup]}"
-	btrfs send "${config[snap]}/${config[name]}" | btrfs receive "${config[backup]}"
-	if [ $? -ne 0 ]; then log "ERROR" "Error during the backup of ${config[snap]}/${config[name]} on ${config[backup]}" ; exit 21; fi
+	btrfs send "${config[snap]}/${config[name]}" | btrfs receive "${config[backup]}" 2>&1 > /dev/null
+	if [ $? -ne 0 ]; then log "ERROR" "Error during the backup of ${config[snap]}/${config[name]} on ${config[backup]}" ; exit 11; fi
 fi
 
 #
 # TAR
 log "INFO" "Archive in tar the backup folder ${config[backup]}/${config[name]}"
-tar cvf "${config[backup]}/backup_${config[name]}_${DATE}.tar" "${config[backup]}/${config[name]}"
+tar cvf "${config[backup]}/backup_${config[name]}_${DATE}.tar" "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 if [ $? -ne 0 ]; then log "ERROR" "Error during tar archive of directory : ${config[backup]}/${config[name]}" ; exit 20; fi
 
 #
 # Compress it
 log "INFO" "Compress the tar archive ${config[backup]}/backup_${config[name]}_${DATE}.tar using ${config[compress]}"
-${config[compress]} "${config[backup]}/backup_${config[name]}_${DATE}.tar"
+${config[compress]} "${config[backup]}/backup_${config[name]}_${DATE}.tar" 2>&1 > /dev/null
 if [ $? -ne 0 ]; then log "ERROR" "Error during compression of tar file : ${config[backup]}/backup_${config[name]}_${DATE}.tar" ; exit 21; fi
 
 #
@@ -364,6 +381,8 @@ if [ $? -ne 0 ]; then log "ERROR" "Error during compression of tar file : ${conf
 if [ -n "${config[rsync]}" ]
 then
 	log "INFO" "Rsyncing the compressed tar to ${config[rsync]}"
-	rsync "${config[backup]}/backup_${config[name]}_${DATE}.*" ${config[rsync]}
+	rsync "${config[backup]}/backup_${config[name]}_${DATE}".* ${config[rsync]} 2>&1 > /dev/null
 	if [ $? -ne 0 ]; then log "ERROR" "Error during rsync of file ${config[backup]}/backup_${config[name]}_${DATE}.* to ${config[rsync]}" ; exit 30; fi
 fi
+
+log "INFO" "Backup is finished successfully"
