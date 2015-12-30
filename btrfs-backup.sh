@@ -336,7 +336,7 @@ then
 
 	# BACKUP
 	log "INFO" "Backup of ${config[snap]}/${config[name]} on ${config[backup]}"
-	btrfs send "${config[snap]}/${config[name]}-new" | btrfs receive "${config[backup]}" 2>&1 > /dev/null
+	btrfs send "${config[snap]}/${config[name]}-new" | btrfs receive "${config[backup]}"
 	if [ $? -ne 0 ]; then log "ERROR" "Error during the backup of ${config[snap]}/${config[name]} on ${config[backup]}" ; exit 11; fi
 
 	# Managing snap/backup
@@ -367,7 +367,7 @@ fi
 #
 # TAR
 log "INFO" "Archive in tar the backup folder ${config[backup]}/${config[name]}"
-tar cvf "${config[backup]}/backup_${config[name]}_${DATE}.tar" "${config[backup]}/${config[name]}" 2>&1 > /dev/null
+tar cf "${config[backup]}/backup_${config[name]}_${DATE}.tar" "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 if [ $? -ne 0 ]; then log "ERROR" "Error during tar archive of directory : ${config[backup]}/${config[name]}" ; exit 20; fi
 
 #
