@@ -11,7 +11,7 @@
 #################################################
 # Variables
 
-DIR=`dirname $0`
+DIR=`realpath ks001-backup | xargs dirname`
 BKP="${DIR}/btrfs-backup.sh"
 
 declare -a FS

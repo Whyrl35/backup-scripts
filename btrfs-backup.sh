@@ -393,6 +393,7 @@ log "INFO" "Keep only the last ${config[retention]} backup(s)"
 #
 # Do some cleaning
 log "INFO" "Cleaning files"
+umount "$TMP_MOUNT" >/dev/null 2>&1
 rmdir $TMP_MOUNT
 btrfs subvolume delete "${config[backup]}/${config[name]}" 2>&1 > /dev/null
 
