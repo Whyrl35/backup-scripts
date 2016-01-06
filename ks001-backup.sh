@@ -24,7 +24,9 @@ FS=(
 	'/data/mysql'
 	'/data/gitlab'
 	'/data/opentsdb'
+	'/data/splunk'
 	'/srv/apache'
+	'/srv/ossec'
 )
 
 #################################################

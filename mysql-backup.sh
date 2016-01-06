@@ -96,5 +96,16 @@ do
 		# Keep only the 'retention' number of backup
 		log INFO "Keeping only the ${config[retention]} number of file"
 		(ls ${config[backup]}/${SQL}_mysql_* -t | head -n ${config[retention]}; ls ${config[backup]}/${SQL}_mysql_*) | sort | uniq -u | xargs --no-run-if-empty rm
+
+		# Clean remotely if necessary
+		if [ -n "${config[rsync]}" ]
+		then
+			rhost=`echo ${config[rsync]} | cut -d":" -f1`
+			rpath=`echo ${config[rsync]} | cut -d":" -f2`
+
+			log INFO "Clean remote directory to keep ${config[retention]} files of retentions"
+			ssh ${rhost} -- "cd ${rpath} ; (ls ${SQL}_mysql_* -t | head -n ${config[retention]}; ls ${SQL}_mysql_*) | sort | uniq -u | xargs --no-run-if-empty rm"
+		fi
 	fi
 done
+
