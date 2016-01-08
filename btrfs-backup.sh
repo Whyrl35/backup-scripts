@@ -388,7 +388,7 @@ fi
 #
 # Apply retention
 log "INFO" "Keep only the last ${config[retention]} backup(s)"
-(ls ${config[backup]}/backup_${config[name]}_${DATE}.* -t | head -n ${config[retention]}; ls ${config[backup]}/backup_${config[name]}_${DATE}.*) | sort | uniq -u | xargs --no-run-if-empty rm
+(ls ${config[backup]}/backup_${config[name]}_* -t | head -n ${config[retention]}; ls ${config[backup]}/backup_${config[name]}_*) | sort | uniq -u | xargs --no-run-if-empty rm
 
 #
 # Do some cleaning
